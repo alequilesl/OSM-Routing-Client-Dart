@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:routing_client_dart/src/models/nearest_point.dart';
 import 'utilities/computes_utilities.dart';
 
 import 'models/lng_lat.dart';
@@ -19,16 +20,19 @@ import 'utilities/utils.dart';
 class OSRMManager {
   final String server;
   final RoadType roadType;
-  final dio = Dio();
+  late final Dio dio;
 
   OSRMManager()
       : server = oSRMServer,
         roadType = RoadType.car;
 
   OSRMManager.custom({
-    required this.server,
+    this.server = oSRMServer,
     this.roadType = RoadType.car,
-  });
+    Dio? dio
+  }){
+    this.dio= dio ?? Dio();
+  }
 
   /// getRoad
   /// this method make http call to get road from specific server
@@ -116,6 +120,32 @@ class OSRMManager {
     }
   }
 
+  Future<List<NearestPoint>> getNearest({
+          required LngLat coordinate,
+          int number= 1
+        }) async
+  {
+    String url= generateNearestPath(coordinate: coordinate, number: number);
+    final response = await dio.get(url);
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> responseJson = response.data;
+      if(responseJson['code'] == 'Ok')
+      {
+        return compute(
+          (Map<String, dynamic> responseJson){
+            List<dynamic>list= responseJson['waypoints'];
+            return list.map((e) => NearestPoint.fromOSRMJson(e)).toList();
+          },
+          responseJson,
+        );
+      }else{
+        return [];
+      }
+    } else {
+      return [];
+    }
+  }
+
   static String instructionFromDirection(
     String direction,
     Map<String, dynamic> jManeuver,
@@ -181,5 +211,18 @@ extension OSRMPrivateFunct on OSRMManager {
     );
 
     return "$baseGeneratedUrl&source=${source.name}&destination=${destination.name}&roundtrip=$roundTrip";
+  }
+
+  @visibleForTesting
+  String generateNearestPath({
+    required LngLat coordinate,
+    int number= 1
+    })
+  {
+    assert(number >= 1);
+    String url =
+        "$server/nearest/v1/driving/${coordinate.toString()}?number=$number";
+
+    return url;
   }
 }
